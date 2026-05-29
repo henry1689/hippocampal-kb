@@ -1,6 +1,6 @@
 # ELYSIUM V5.1 — 完整合并架构规范（9D + ELYSIUM 整合版）
 
-> 版本: 5.1.0 | 基于 9D 海马体记忆引擎 + ELYSIUM V5.0 MoE 人格架构
+> 版本: 5.1.1 | 基于 9D 海马体记忆引擎 + ELYSIUM V5.0 MoE 人格架构
 > 核心原则：9D 的记忆工程闭环 + ELYSIUM 的隐私/感官/人格动态
 > 文件位置: `hippocampal-kb/docs/`
 

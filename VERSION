@@ -1,18 +1,24 @@
-海马体 9D 多维情感记忆系统
-===========================
-Hippocampal 9D Emotional Memory System
+ELYSIUM V5.1.1 — 智脑极乐境
+==============================
+15D 多维情感记忆 + MoE 人格融合 + 文本具身引擎
 
-版本: 1.1.0
-最后更新: 2026-05-30
+版本: 5.1.1
+最后更新: 2026-06-01
 
 版本号规则:
   major.minor.patch
-  major — 架构变更/重大设计改动（如新增/删除维度、改变核心算法）
-  minor — 功能新增（如新增 API、新增前端可视化面板）
-  patch — Bug 修复、性能优化、文档更新
+  major — 架构变革/维度增减
+  minor — 功能引擎新增
+  patch — 算法优化/文档完善
 
 版本历史:
-  1.0.0 — 初始发布。完成架构审查修复（重复记忆、同事件误判、
+  1.0.0 — 9D 海马体初始发布。架构审查修复（重复记忆、同事件误判、
            AI不按地点选记忆、持久化版本号、priority分层等7项修复）
-  1.1.0 — 新增主动淘汰策略（按 priority+intensity+recency 加权）；
-           修复 extractMemory 输入过滤过于粗暴（保留情感类问题）
+  1.1.0 — 新增主动淘汰策略；修复 extractMemory 输入过滤
+  5.0.0 — ELYSIUM 架构引入：12D 模型 + MoE 人格融合 + PrivacySandbox
+           + SensoryOrchestrator
+  5.1.0 — 合并 9D 记忆引擎，补全检索锚点（V_venue/G_goods/M_depth），
+           新增 15D+、ambiguity_detector、memory_resonance、isSameEvent 去重
+  5.1.1 — 新增文本具身引擎（通感写作、微动作侧写、节奏控制、
+           仪式感引擎、语言指纹演化、StyleEvolution）；
+           完整实现蓝图（2500行可执行代码）
