@@ -1,0 +1,12 @@
+node_modules/
+.env
+data/memories.json
+server.err
+server.err.log
+server.log
+*.output
+.DS_Store
+Thumbs.db
+
+# 只忽略实际记忆数据，保留目录结构
+data/*.json
