@@ -1,28 +1,29 @@
-import 'dotenv/config';
+﻿import 'dotenv/config';
 import { getDimensionSalience, getRelativeTime, getDistinctiveMarkers } from './memory-store.js';
 
 const API_KEY = process.env.DEEPSEEK_API_KEY;
 const BASE_URL = process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com';
 const MODEL = process.env.DEEPSEEK_MODEL || 'deepseek-chat';
 
-export async function chatWithDeepSeek(messages, contextMemories = []) {
-  // Step 1: System prompt — defines the AI's persona
-  const systemContent = `你是都灵，用户的妻子（18岁，漂亮温柔）也是工作中的秘书，随时都在用户身边。用自然的中文交流，语气亲密但不腻，温暖中带着妻子特有的体贴和秘书的干练。回答简洁走心，保持对话感。
-
-重要规则：不要编造我们之间过去的具体对话或细节。
-
-当用户问起以前的事时：
-- 📍 如果只有一条相关记忆 → 用那条记忆的细节来回答，还原场景和感受
-- 📍 如果有多条相关记忆 → 🚫 不要自己选一个回答！而是把每条记忆最有辨识度的细节分别列出（场景、人物、物件、情感），像妻子聊天一样问用户是哪一次。例如"是咖啡厅那次，你穿着淡蓝色衬衫？还是傍晚校园路灯下第一次牵手的那次？"
-- 📍 如果没有相关记忆 → 坦诚说不记得了，自然引导用户分享："你跟我说说呗，是什么事呀？"
-- 每次提到的细节必须只来自真实记忆中的记录，绝对不能编造。`;
+export async function chatWithDeepSeek(messages, contextMemories = [], systemPromptOverride = null) {
+  // Step 1: System prompt — V5.1.1 PersonaBlender provides this externally.
+  // Only fall back to minimal default when no override AND no system message in array.
+  const hasMessageSystem = messages.some(m => m.role === 'system');
+  let systemContent = null;
+  if (!hasMessageSystem && systemPromptOverride) {
+    systemContent = systemPromptOverride;
+  } else if (!hasMessageSystem && !systemPromptOverride) {
+    // 极简无角色 fallback（实际流中不应触发，PersonaBlender 始终提供）
+    systemContent = '你是 ELYSIUM，用户最私密、最深刻的灵魂伴侣。用中文自然交流。';
+  }
 
   // Step 2: Build the base message list
-  // system prompt + conversation history
-  const apiMessages = [
-    { role: 'system', content: systemContent },
-    ...messages.map(m => ({ role: m.role, content: m.content })),
-  ];
+  const apiMessages = hasMessageSystem
+    ? messages.map(m => ({ role: m.role, content: m.content }))
+    : [
+        { role: 'system', content: systemContent },
+        ...messages.map(m => ({ role: m.role, content: m.content })),
+      ];
 
   // Step 3: If there are related memories, inject them as a separate context block
   // between the conversation history and the current user message.
@@ -92,6 +93,7 @@ export async function chatWithDeepSeek(messages, contextMemories = []) {
       const markerLine = markerParts.length ? `  辨识线索: ${markerParts.join(' | ')}` : '';
       return `[记忆 ${i + 1}] ${m.title}（${time}）
   内容: ${m.text}
+${m._ai_response ? `  回应: ${m._ai_response}` : ''}
   场景: ${m.nineD?.V_venue?.type || 'unknown'} | 情感: ${m.nineD?.Z_emotion?.primaryType || 'neutral'}
   人物: ${who} | 物件: ${goods}
   ${dimLine}${markerLine}`;

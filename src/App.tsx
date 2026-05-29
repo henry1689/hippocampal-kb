@@ -6,6 +6,8 @@ import { KeywordGraph } from './components/KeywordGraph';
 import { MemoryLog } from './components/MemoryLog';
 import { SceneReconstruction } from './components/SceneReconstruction';
 import { Timeline } from './components/Timeline';
+import { FifteenDViewer } from './components/FifteenDViewer';
+import { PipelineTrace } from './components/PipelineTrace';
 import { searchEngine } from './engine/SearchEngine';
 import type { Memory as PresetMemory } from './types';
 
@@ -65,6 +67,12 @@ export default function App() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // ─── ELYSIUM 15D 调试面板状态 ───
+  const [debugState, setDebugState] = useState<any>(null);
+  const [debugPipeline, setDebugPipeline] = useState<any[]>([]);
+  const [debugAmbiguity, setDebugAmbiguity] = useState<any>(null);
+  const [debugWeights, setDebugWeights] = useState<any>(null);
+
   useEffect(() => {
     searchEngine.initialize().then(() => setLoaded(true)).catch(() => setLoaded(true));
     const timer = setTimeout(() => setLoaded(true), 3000);
@@ -114,6 +122,8 @@ export default function App() {
 
       const data = await res.json();
 
+      // 附加节奏/感官元信息（仅调试面板使用）
+      const metaTag = data.action === 'CLARIFY' ? ' 🔍澄清' : data.rhythm_config?.typing_speed === 'slow' ? ' 💗安抚' : '';
       const sysMsg: Message = {
         id: `sys-${Date.now()}`,
         role: 'assistant',
@@ -126,6 +136,16 @@ export default function App() {
         setChatMemories(prev => [enriched, ...prev].slice(0, 300));
         setSelectedId(data.memory.id);
       }
+
+      // 捕获 V5.1.1 调试数据
+      if (data._debug) {
+        setDebugAmbiguity(data._debug.analysis || data._debug.ambiguity);
+        setDebugWeights(data._debug.weights);
+        setDebugState(data._debug.state || debugState);
+        // 流水线日志从独立 API 获取
+      }
+      fetch('/api/debug/state').then(r => r.json()).then(setDebugState).catch(() => {});
+      fetch('/api/debug/pipeline').then(r => r.json()).then(setDebugPipeline).catch(() => {});
     } catch (e: any) {
       setMessages(prev => [...prev, {
         id: `err-${Date.now()}`,
@@ -136,6 +156,15 @@ export default function App() {
       setSending(false);
     }
   }, [sending, messages]);
+
+  // ─── 定时刷新 15D 状态 ───
+  useEffect(() => {
+    const timer = setInterval(() => {
+      fetch('/api/debug/state').then(r => r.json()).then(setDebugState).catch(() => {});
+      fetch('/api/debug/pipeline').then(r => r.json()).then(setDebugPipeline).catch(() => {});
+    }, 2000);
+    return () => clearInterval(timer);
+  }, []);
 
   const handleSend = useCallback(() => doChat(input), [input, doChat]);
 
@@ -242,6 +271,16 @@ export default function App() {
             <MemoryLog memories={chatMemories} onSelect={setSelectedId} />
           </div>
           <Timeline memories={allMemories} selectedId={selectedId} onSelect={setSelectedId} />
+
+          {/* ⭐ ELYSIUM 15D 调试观测窗 */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 8 }}>
+            <FifteenDViewer state={debugState} />
+            <PipelineTrace
+              pipeline={debugPipeline}
+              ambiguity={debugAmbiguity}
+              weights={debugWeights}
+            />
+          </div>
         </div>
 
         {/* Right: chat sidebar */}
