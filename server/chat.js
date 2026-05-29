@@ -173,8 +173,15 @@ export async function extractMemory(messages, replyText) {
     // Guard: too short or too long → not meaningful memory content
     if (!userText || userText.length < 5 || userText.length > 500) return null;
 
-    // Guard: looks like a direct question about system functionality → don't extract
-    if (/^(什么是|怎样|如何|为什么|会不会|能不能|是不是|有没有|测试|test|ping)/i.test(userText)) return null;
+    // Guard: skip only obvious test/system commands, not emotional questions
+    // "什么是爱" ← 有情感内容 → 保留；"测试一下" ← 纯测试 → 跳过
+    const hasEmotion = /爱|喜欢|难过|开心|感动|伤心|怀念|浪漫|温暖|幸福|害怕|紧张|焦虑|愤怒|委屈|感动|感激|遗憾|甜蜜|美好|温馨/.test(userText);
+    if (!hasEmotion) {
+      // 短 + 无情感 → 可能是系统测试或功能询问
+      if (userText.length < 10 && /^(什么是|怎样|如何|为什么|会不会|能不能|是不是|有没有|测试|test|ping)\b/i.test(userText)) return null;
+      // 纯测试/命令 → 跳过
+      if (/^(测试|test|ping|hello|hi|你好|在吗|干嘛)\b/i.test(userText) && userText.length < 8) return null;
+    }
 
     const conversationText = [
       ...userMessages.slice(-2).map(m => `用户: ${m.content}`),

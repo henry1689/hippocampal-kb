@@ -8,6 +8,7 @@ const DATA_FILE = path.join(__dirname, '..', 'data', 'memories.json');
 let memories = [];
 let loaded = false;
 const DATA_VERSION = 1;
+const MAX_MEMORIES = 300;
 
 function ensureDir() {
   const dir = path.dirname(DATA_FILE);
@@ -43,8 +44,27 @@ function migrate(data, fromVersion) {
   return m;
 }
 
+/** Evict excess memories when over MAX_MEMORIES.
+ *  Retention score = priority * 100 + intensity * 10 + recency_weight.
+ *  Higher priority (articles/knowledge) stays; low-priority chat noise drops first. */
+function evictExcess() {
+  if (memories.length <= MAX_MEMORIES) return;
+  const now = Date.now();
+  memories.sort((a, b) => {
+    const scoreA = (a.priority || 1) * 100
+      + (a.nineD?.Z_emotion?.intensity || 0) * 10
+      + Math.max(0, 1 - (now - (a.timestamp || 0)) / 2592000000) * 5;  // 30d decay
+    const scoreB = (b.priority || 1) * 100
+      + (b.nineD?.Z_emotion?.intensity || 0) * 10
+      + Math.max(0, 1 - (now - (b.timestamp || 0)) / 2592000000) * 5;
+    return scoreB - scoreA; // descending
+  });
+  memories = memories.slice(0, MAX_MEMORIES);
+}
+
 function save() {
   ensureDir();
+  evictExcess();
   try {
     const wrapped = JSON.stringify({ version: DATA_VERSION, data: memories }, null, 2);
     fs.writeFileSync(DATA_FILE, wrapped, 'utf-8');

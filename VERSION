@@ -2,7 +2,7 @@
 ===========================
 Hippocampal 9D Emotional Memory System
 
-版本: 1.0.0
+版本: 1.1.0
 最后更新: 2026-05-30
 
 版本号规则:
@@ -14,3 +14,5 @@ Hippocampal 9D Emotional Memory System
 版本历史:
   1.0.0 — 初始发布。完成架构审查修复（重复记忆、同事件误判、
            AI不按地点选记忆、持久化版本号、priority分层等7项修复）
+  1.1.0 — 新增主动淘汰策略（按 priority+intensity+recency 加权）；
+           修复 extractMemory 输入过滤过于粗暴（保留情感类问题）
