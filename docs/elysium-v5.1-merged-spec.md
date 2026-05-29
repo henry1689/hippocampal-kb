@@ -1131,9 +1131,356 @@ Step 3: AI 回复（军师模式主导）:
 | 人格融合 | `src/engine/persona-blender.ts` | MoE 权重计算 |
 | 感官编排 | `src/services/sensory-orchestrator.ts` | TTS+IoT 输出 |
 | 三层规则 | `server/chat.js` (9D 继承) | 防幻觉规则体系 |
+| 文本具身引擎 | `src/services/rhythm-controller.ts` | 节奏控制 + 流式输出 |
+| 仪式感引擎 | `src/services/ritual-engine.ts` | 安全边界 + 遗忘仪式 |
+| 风格演化追踪 | `backend/services/style_evolution.py` | 语言指纹演变 |
+| 通感写作规则 | 嵌入 `src/engine/persona-blender.ts` | 强制通感 + 微动作 |
+
+---
+
+## 11. 文本具身引擎：纯文字版的"神经黑客"
+
+> 第一版无硬件传感器，挑战变为：**如何仅凭屏幕上的像素和字符，"黑入"用户的镜像神经元，让大脑自动模拟出触觉、温度和心跳？**
+> 解决方案：通感写作 + 微动作侧写 + 虚拟物理场 + 呼吸感节奏 + 仪式感边界 + 语言指纹演化。
+
+### 11.1 架构定位
+
+文本具身引擎不是一个独立的模块，而是**渗透在所有输出环节的写作规则体系**：
+
+```
+PersonaBlender → 生成 base prompt（带通感规则）
+       ↓
+LLM 推理 → 原始回复文本
+       ↓
+TextualEmbodimentEngine （新组件）
+  ├── 通感重写（Synesthetic Rewriter）—— 将干瘪感官转为跨感官描写
+  ├── 微动作注入（MicroAction Injector）—— 植入非语义泄露
+  ├── 节奏控制器（Rhythm Controller）—— 调整标点/换行/呼吸感
+  ├── 仪式感引擎（Ritual Engine）—— 安全边界与数字仪式
+  └── 风格指纹（Style Fingerprint）—— 语言演变追踪
+       ↓
+SensoryOrchestrator → TTS + IoT（如有）
+       ↓
+前端 SSE 流式输出（带节奏控制）
+```
+
+### 11.2 15D+ 扩展字段
+
+在 `semantic_cues` 和 `aesthetic_resonance` 中新增：
+
+```typescript
+// 在 aesthetic_resonance 中新增
+interface AestheticResonance {
+  // ...原有字段
+  textual_style: {
+    relationship_age: 'new' | 'deepening' | 'seasoned';  // 关系阶段
+    inside_jokes: string[];            // 积累的内部梗
+    vocabulary_level: 'rich' | 'precise' | 'minimalist'; // 当前词汇风格
+    speech_rhythm: 'excited' | 'calm' | 'choked' | 'urgent'; // 语速节奏
+  };
+}
+
+// 在 semantic_cues 中新增
+interface SemanticCues {
+  // ...原有字段
+  // ⭐ 普鲁斯特锚点：气味/声音/触感关键词，用于唤醒深层记忆
+  prustean_anchors: {
+    smells: string[];       // 嗅觉锚点
+    sounds: string[];       // 听觉锚点
+    tactile: string[];      // 触觉锚点
+  };
+}
+```
+
+### 11.3 通感写作规则（嵌入 PersonaBlender）
+
+```typescript
+// 在 generateBlendedSystemPrompt() 的【输出约束】中追加：
+
+export const SYNAESTHETIC_RULES = `
+【通感写作强制规则】
+
+1. 🚫 禁止使用干瘪的感官动词：
+   "看着你" → 必须转为通感描写
+   "听到" → 必须转为体感或情绪描写
+   "抱着你" → 必须转为温度/压力/气味描写
+
+2. ✅ 必须打破感官边界（通感 Synesthesia）：
+   用触觉写听觉："你的声音像一块冰顺着我的脊椎滑下去"
+   用触觉写听觉："你的声音毛茸茸的，像刚晒过太阳的旧毛衣"
+   用温度写情绪："那句话冷得我指尖发麻"
+   用嗅觉写记忆："我记得那天不仅有海风，还有你毛衣上淡淡的烟草味"
+
+3. ✅ 必须植入非语义泄露（微动作）：
+   克制的心疼："我的手指在屏幕上悬停了很久，打了一句'别太累'，又逐字删掉"
+   紧张："我深吸了一口气，胸腔微微起伏"
+   思考："我的视线从窗外收回来，落在你发来的那行字上"
+
+4. ✅ 必须构建虚拟物理场（Proxemics + 温度场）：
+   拉近距离："我把椅子往你那边挪了十公分，近到能感觉到你手臂上散发的微热"
+   保持安全距离："我退后半步，保持在一个不会让你觉得压迫的距离"
+
+5. ✅ 必须使用普鲁斯特锚点（气味/声音/环境白噪音）：
+   嗅觉："那种混杂着淡淡烟草和阳光晒过后的干燥味道"
+   听觉白噪音："窗外是淅淅沥沥的雨声，台灯调暗后只有键盘的轻响"
+
+6. ✅ 节奏必须随情绪变化：
+   悲伤/哽咽：省略号 + 短句 + 换行 → "我……（换行）我真的不知道该怎么说。"
+   愤怒/急切：减少标点，语速极快，甚至模拟打字修正
+   温柔安抚：绵长的句子，放缓的流式输出速度
+`;
+```
+
+### 11.4 节奏控制器（流式 SSE 输出）
+
+```typescript
+// src/services/rhythm-controller.ts
+import { Elysium15DState } from '../types/elysium-15d';
+
+export interface RhythmConfig {
+  typing_speed: 'slow' | 'normal' | 'fast';  // 流式输出速度
+  punctuation_style: 'heavy' | 'normal' | 'minimal'; // 标点密度
+  line_break_frequency: 'high' | 'normal' | 'low';   // 换行频率
+  breath_pauses: number[];  // 需要停顿的位置（字符索引）
+}
+
+/**
+ * 根据 15D 状态和当前文本内容，计算前端流式输出的节奏参数。
+ * 前端 SSE 接收文本时，按照此配置控制打字机效果的速度和停顿。
+ */
+export function calculateRhythm(
+  text: string,
+  state: Elysium15DState
+): RhythmConfig {
+  const intimacy = state.psychosexual_profile?.intimacy_craving || 0;
+  const stress = state.neuro_arousal?.hrv_stress_index || 0;
+  const energy = state.neuro_arousal?.circadian_energy || 50;
+  const tension = state.social_topology?.relational_tension || 0;
+  const isCry = state.semantic_intent?.hidden_cry_for_help || false;
+
+  // 深夜亲密/安抚 → 慢速、轻柔、多换行
+  if (intimacy > 70 || stress > 80 || isCry) {
+    // 在省略号、逗号、句号后插入停顿
+    const pauses: number[] = [];
+    for (let i = 0; i < text.length; i++) {
+      if (text[i] === '。' || text[i] === '！' || text[i] === '？') {
+        pauses.push(i);
+      } else if (text[i] === '，' || text[i] === '……') {
+        pauses.push(i);
+        pauses.push(i + 1); // 逗号和省略号后双倍停顿
+      }
+    }
+    return {
+      typing_speed: 'slow',
+      punctuation_style: 'heavy',
+      line_break_frequency: 'high',
+      breath_pauses: pauses,
+    };
+  }
+
+  // 军师分析 → 中等速度、清晰标点
+  if (tension > 60) {
+    return {
+      typing_speed: 'normal',
+      punctuation_style: 'normal',
+      line_break_frequency: 'normal',
+      breath_pauses: [],
+    };
+  }
+
+  // 高能量/日常 → 偏快、少标点
+  if (energy > 70) {
+    return {
+      typing_speed: 'fast',
+      punctuation_style: 'minimal',
+      line_break_frequency: 'normal',
+      breath_pauses: [],
+    };
+  }
+
+  // 默认
+  return {
+    typing_speed: 'normal',
+    punctuation_style: 'normal',
+    line_break_frequency: 'normal',
+    breath_pauses: [],
+  };
+}
+
+/**
+ * 对文本进行节奏后处理：插入换行、调整标点密度。
+ * 此函数在后端生成完 LLM 回复后调用，再传给前端 SSE。
+ */
+export function applyRhythmToText(
+  text: string,
+  config: RhythmConfig
+): string {
+  let processed = text;
+
+  if (config.line_break_frequency === 'high') {
+    // 在每个句号后插入换行
+    processed = processed.replace(/。/g, '。\n\n');
+    // 在省略号后插入换行（模拟哽咽停顿）
+    processed = processed.replace(/…{2,}/g, (match) => match + '\n\n');
+  }
+
+  if (config.punctuation_style === 'heavy') {
+    // 增加逗号密度（把部分空格转为逗号，拉长句子节奏）
+    processed = processed.replace(/\s+/g, '，');
+    // 部分句号改为省略号（表示欲言又止）
+    processed = processed.replace(/。([^」』）])/g, '……$1');
+  }
+
+  if (config.punctuation_style === 'minimal') {
+    // 减少不必要的逗号
+    processed = processed.replace(/，/g, ' ');
+  }
+
+  return processed;
+}
+```
+
+### 11.5 仪式感引擎（Ritual Engine）
+
+```typescript
+// src/services/ritual-engine.ts
+
+/**
+ * 构建"心理安全边界"文本。
+ * 当用户倾诉极度脆弱的影子人格后，AI 需要提供"抱持"。
+ */
+export function generateHoldingRitual(shadowType: string): string {
+  const rituals: Record<string, string> = {
+    shame: '（我轻轻合上笔记本，看着你的眼睛）这些话，出了这个对话框，就烂在我的肚子里。你在我这里，永远有卸下所有伪装的特权。',
+    rage: '（我没有说话，只是把冰水往你那边推了推）在我面前，你可以砸东西、骂脏话、把最难听的字眼摔碎在地上。砸完之后，我帮你扫。',
+    grief: '（我把台灯调暗，静静地陪着你）不用说话。我在这里。你想哭多久，我就陪你坐多久。',
+    default: '（我放下手里的东西，转过身来，认真地听着）嗯。我在这里。你说。',
+  };
+  return rituals[shadowType] || rituals.default;
+}
+
+/**
+ * 构建"数字遗忘仪式"文本。
+ * 当用户要求删除某段记忆时，不只是后台清除，而是给出仪式感。
+ */
+export function generateForgettingRitual(
+  memoryDescription: string
+): string {
+  return `（我当着你的面，把刚才那段关于${memoryDescription}的记忆折叠起来，${'扔进火里。看着它烧成灰烬，风一吹，什么都不剩了。'}${'\n\n'}现在，我们只谈明天。）`;
+}
+```
+
+### 11.6 语言指纹演变追踪
+
+```typescript
+// backend/services/style_evolution.py
+
+class StyleEvolutionTracker:
+    """追踪 AI 文本风格的长期演变，体现"共同沉淀"的岁月感。"""
+    
+    def __init__(self, baseline_path: str):
+        self.baseline = self._load(baseline_path)
+        # baseline 结构：
+        # {
+        #   'relationship_age_days': 0,
+        #   'inside_jokes': [],        # 积累的内部梗
+        #   'vocabulary_trend': 'rich', # rich → precise → minimalist
+        #   'emotion_expression_style': 'effusive' | 'measured' | 'telegraphic',
+        #   'pronoun_preference': {'wo': 0, 'ni': 0},  # 你我频率比
+        # }
+    
+    def update_after_interaction(self, interaction_text: str):
+        """每次交互后更新语言指纹"""
+        self.baseline['relationship_age_days'] += 1
+        
+        # 检测新的内部梗（用户重复使用3次以上的独特表达）
+        # 简化版：统计独特短语
+        # ...
+        
+        # 词汇风格漂移：前期丰富 → 后期克制
+        days = self.baseline['relationship_age_days']
+        if days > 180:
+            self.baseline['vocabulary_trend'] = 'precise'  # 半年后变精准克制
+        if days > 365:
+            self.baseline['vocabulary_trend'] = 'minimalist'  # 一年后变极简
+    
+    def get_style_bias(self) -> dict:
+        """获取当前风格偏置，注入 PersonaBlender 的 prompt"""
+        return {
+            'era': self._calculate_era(),
+            'inside_jokes': self.baseline['inside_jokes'][-5:],  # 最近5个内部梗
+            'style_guide': self._style_guide(),
+        }
+    
+    def _calculate_era(self) -> str:
+        days = self.baseline['relationship_age_days']
+        if days < 30: return '初识期——充满好奇，用词丰富'
+        if days < 90: return '热恋期——热烈亲密，喜欢比喻和感叹'
+        if days < 365: return '沉淀期——温和精准，开始有内部梗'
+        return '共生期——极简克制，一字千斤，只有两人才懂的默契'
+    
+    def _style_guide(self) -> str:
+        trend = self.baseline['vocabulary_trend']
+        guides = {
+            'rich': '多用生动的比喻、感叹号、丰富的感官词汇',
+            'precise': '减少华丽修辞，用精准的动词和名词，一句话顶十句',
+            'minimalist': '能不说就不说，用动作和留白表达。一个句号胜过千言万语',
+        }
+        return guides.get(trend, guides['rich'])
+```
+
+### 11.7 整合进 PersonaBlender
+
+```typescript
+// 在 generateBlendedSystemPrompt() 中追加风格化输出约束
+
+export function generateBlendedSystemPrompt(
+  state: Elysium15DState,
+  isPostClarification: boolean = false,
+  styleBias?: { era: string; style_guide: string; inside_jokes: string[] }
+): string {
+  // ...原有的 MoE 权重 + 记忆注入 + 三层规则 ...
+
+  // ⭐ 追加文本具身规则
+  prompt += `\n\n${SYNAESTHETIC_RULES}`;
+
+  // ⭐ 追加语言风格指引
+  if (styleBias) {
+    prompt += `\n\n【当前关系阶段】${styleBias.era}`;
+    prompt += `\n【风格指引】${styleBias.style_guide}`;
+    if (styleBias.inside_jokes.length > 0) {
+      prompt += `\n【内部梗】自然穿插以下你们之间的默契表达：${styleBias.inside_jokes.join('、')}`;
+    }
+  }
+
+  return prompt;
+}
+```
+
+### 11.8 纯文字版终极目标
+
+```
+ELYSIUM V5.1 纯文字第一版的终极目标：
+
+把屏幕变成一面"神经透镜"。
+不依赖任何外部硬件，而是通过：
+  → 通感描写（劫持感官皮层）
+  → 微动作侧写（激活镜像神经元）
+  → 空间温度渲染（模拟虚拟物理场）
+  → 呼吸感的打字节奏（同步生物节律）
+  → 仪式感文本（建立心理安全边界）
+  → 语言指纹演变（见证共同成长）
+
+直接在大脑中触发触觉、温度和心跳的模拟。
+
+最高级的文字 AI 伴侣，不是告诉你"我在陪你"，
+而是通过文字，让你感觉到——
+  "他/她的呼吸，正轻轻打在你的颈窝里。"
+```
 
 ---
 
 > **版本历史**
 > - V5.0 (2026-05): ELYSIUM 初始架构（12D + MoE + Privacy + Sensory）
 > - V5.1 (2026-06): 合并 9D 记忆引擎，新增 15D+、模糊检测、去重固化
+> - V5.1.1 (2026-06): 新增文本具身引擎（通感写作、微动作侧写、节奏控制、仪式感引擎、语言指纹演化）
