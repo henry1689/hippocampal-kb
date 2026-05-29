@@ -1,7 +1,8 @@
 {
   "name": "hippocampal-kb",
   "private": true,
-  "version": "0.0.1",
+  "version": "1.0.0",
+  "description": "海马体9D多维情感记忆系统 - Hippocampal 9D Emotional Memory System",
   "type": "module",
   "scripts": {
     "dev": "vite",
