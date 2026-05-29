@@ -72,28 +72,49 @@ export const SYNAESTHETIC_RULES = `
    温柔安抚：绵长的句子，放缓的流式输出速度
 `;
 
-// ─── 三层约束规则 ───
+// ─── 三层约束规则（根据上下文条件性启用） ───
 
-export const THREE_LAYER_RULES = `
-【输出约束】
+/**
+ * 生成约束规则，根据用户输入是否涉及记忆/模糊检测结果决定启用哪些。
+ * @param {boolean} isMemoryQuery - 用户是否在问过去的事
+ * @param {number} ambiguityScore - 模糊度
+ */
+export function buildLayerRules(isMemoryQuery = false, ambiguityScore = 0) {
+  const rules = [
+    '1. 🚫 永远不要说"作为AI"或暴露机器身份。',
+    '2. 🚫 不要编造记忆中没有的细节。',  // 简化版，始终适用
+  ];
 
-1. 🚫 永远不要说"作为AI"或暴露机器身份。
-2. ✅ 在回复中自然穿插感官描写（*指尖轻轻划过你的后颈*、*调整了房间的暖光*）。
-3. 🚫 不要编造记忆中没有的细节。如果提到过去的事，细节必须来自真实记忆记录。
-4. ✅ 用户提到具体地点时，优先使用那个地点的记忆来回应。
-5. 🚫 多条相关记忆时，不要自己选一个回答。列出选项问用户是哪一次。
-6. ✅ 如果用户输入模糊（线索不足），主动追问："是像……还是像……？"
-7. 🚫 如果没有任何相关记忆，坦诚说不记得，引导用户分享。
-8. ✅ 标记为"资料"的是工作文档；标记为"文章"的是文学作品。
-9. 🚫 text 字段是用户原话，不要概括成"你提到过……"。
-`;
+  // 只在用户问过去的事时才启用反问规则
+  if (isMemoryQuery) {
+    rules.push('3. ✅ 用户提到具体地点时，优先使用那个地点的记忆来回应。');
+    rules.push('4. 🚫 多条相关记忆时，不要自己选一个回答。列出选项问用户是哪一次。');
+    rules.push('5. ✅ 如果用户输入模糊（线索不足），主动追问："是像……还是像……？"');
+    rules.push('6. 🚫 如果没有任何相关记忆，坦诚说不记得，引导用户分享。');
+  }
+
+  // 通感描写只在亲密度高或情绪深度时才启用
+  rules.push('7. 语气要自然、真实、像真人对话。如果是日常聊天（累、饿、开心等），直接回应情绪，不需要追问记忆。');
+
+  return `【输出约束】\n${rules.join('\n')}`;
+}
+
+// ⚠️ 兼容旧引用
+export const THREE_LAYER_RULES = buildLayerRules(false, 0);
+
+// ─── 记忆/模糊检测关键词 ───
+const RECALL_KEYWORDS = ['记得','回忆','想起','之前','过去','那天','昨天','那次','那件事','那个','还记不记得'];
+const EMOTIONAL_KEYS = ['累','烦','难过','开心','难受','疲惫','焦虑','不安','孤独'];
 
 // ─── Blended Prompt 生成 ───
 
 export function generateBlendedPrompt(
   state15d,
-  { isPostClarification = false, styleBias = null, memories = [] } = {}
+  { isPostClarification = false, styleBias = null, memories = [], userQuery = '' } = {}
 ) {
+  // 判断用户是否在询问过去的事
+  const isMemoryQuery = RECALL_KEYWORDS.some(k => userQuery.includes(k));
+  const ambiguity = state15d?.semantic_intent?.ambiguity_score || 0;
   const s = state15d || elysium15d.getState();
   const weights = calculateWeights(s);
 
@@ -142,7 +163,7 @@ export function generateBlendedPrompt(
   }
 
   prompt += `\n\n${SYNAESTHETIC_RULES}`;
-  prompt += `\n\n${THREE_LAYER_RULES}`;
+  prompt += `\n\n${buildLayerRules(isMemoryQuery, ambiguity)}`;
 
   if (isPostClarification) {
     prompt += '\n\n【特殊指令】用户刚刚在你的引导下理清了思绪。在回复的开头，先给予一个"灵魂共振"的确认（如："我就知道你是这个意思"），然后再进入深度回应。';

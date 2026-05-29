@@ -1,4 +1,4 @@
-/**
+﻿/**
  * MemoryResonance — 记忆共振引擎 (V5.1.1)
  *
  * 根据模糊检测结果决定：直接回复 / 协作式澄清。
@@ -61,11 +61,12 @@ export class MemoryResonance {
     return {
       action: 'CLARIFY',
       prompt,
-      systemPrompt: prompt,  // 对整个 LLM 调用使用澄清 prompt 作为 system
+      systemPrompt: prompt,
       memories,
       analysis,
       state,
       weights,
+      isMemoryQuery: true,  // 澄清模式一定是涉及记忆的
     };
   }
 
@@ -73,18 +74,21 @@ export class MemoryResonance {
     const blendedPrompt = generateBlendedPrompt(state, {
       isPostClarification: false,
       memories,
+      userQuery: userInput,
     });
     elysium15d.logPipeline('4_persona_weights', { ...weights, mode: 'RESPOND' });
     elysium15d.logPipeline('5_prompt_built', { mode: 'RESPOND', isAmbiguous: false });
 
+    const isMemoryQuery = /记得|回忆|想起|之前|过去|那天|昨天|那次/.test(userInput);
     return {
       action: 'RESPOND',
       prompt: blendedPrompt,
       systemPrompt: blendedPrompt,
-      memories,
+      memories: isMemoryQuery ? memories : [],  // 非记忆查询不传记忆
       analysis,
       state,
       weights,
+      isMemoryQuery,
     };
   }
 
