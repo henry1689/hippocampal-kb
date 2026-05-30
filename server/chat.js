@@ -93,7 +93,8 @@ export async function chatWithDeepSeek(messages, contextMemories = [], systemPro
       const markerLine = markerParts.length ? `  辨识线索: ${markerParts.join(' | ')}` : '';
       return `[记忆 ${i + 1}] ${m.title}（${time}）
   内容: ${m.text}
-${m._ai_response ? `  回应: ${m._ai_response}` : ''}
+${m._ai_response ? `  回应: ${m._ai_response}` : ''}${m._narrative ? `
+  📖 ${m._narrative}` : ''}
   场景: ${m.nineD?.V_venue?.type || 'unknown'} | 情感: ${m.nineD?.Z_emotion?.primaryType || 'neutral'}
   人物: ${who} | 物件: ${goods}
   ${dimLine}${markerLine}`;
@@ -190,29 +191,73 @@ export async function extractMemory(messages, replyText) {
       `AI: ${replyText.slice(0, 500)}`,
     ].join('\n');
 
-    // Only ask LLM to extract 9D data — text field is the user's original content
+    // V5.1.1: 15D 词元化提取
     const extractPrompt = {
       role: 'system',
-      content: `从以下对话中提取9D情感词元。按 JSON 格式输出，不要包含其他文字：
+      content: `分析以下对话。如果是用户在分享过去的事、情感经历、值得记住的瞬间，则：
+1. 将用户的原文逐段拆分为15D词元（token）——覆盖整段叙述
+2. 每个词元标记所属的15D维度
+3. 生成叙事
+
+⚠️ 关键：不是提取关键词，而是把原文拆分词元化。原文中的每个有意义的片段都要成为一个token。
+
+否则返回 {"is_memory": false}
+
+按 JSON 格式输出：
 
 {
-  "title": "能概括核心内容的有意义标题（8-20字，让用户一眼认出是哪条记忆）",
+  "title": "能概括核心内容的有意义标题（8-20字）",
+  "is_memory": true/false,
+  "narrative": "如果 is_memory 为 true，用一段有温度的文字（60-150字）重新讲述这件事，保留场景、情感和细节。",
+  "tokens": [
+    {"text": "小时候", "dim": "Y_time", "weight": 0.5},
+    {"text": "外婆家", "dim": "V_venue", "weight": 0.9},
+    {"text": "老街", "dim": "V_venue", "weight": 0.9},
+    {"text": "石板路", "dim": "G_goods", "weight": 0.8},
+    {"text": "太阳晒", "dim": "S_senses", "weight": 0.7},
+    {"text": "温热", "dim": "S_senses", "weight": 0.6},
+    {"text": "傍晚", "dim": "Y_time", "weight": 0.7},
+    {"text": "青苔", "dim": "S_senses", "weight": 0.6},
+    {"text": "葱油饼香", "dim": "S_senses", "weight": 0.8},
+    {"text": "花猫", "dim": "G_goods", "weight": 0.7},
+    {"text": "外婆", "dim": "W_who", "weight": 0.9},
+    {"text": "喊你", "dim": "S_senses", "weight": 0.6},
+    {"text": "开心", "dim": "Z_emotion", "weight": 0.9},
+    {"text": "夏天", "dim": "Y_time", "weight": 0.7},
+    {"text": "糖葫芦", "dim": "G_goods", "weight": 0.8}
+  ],
   "nineD": {
-    "X_semantic": { "keywords": ["关键词1","关键词2"], "topics": ["主题1"] },
-    "Z_emotion": { "vector": { "valence": 0.0, "arousal": 0.0 }, "intensity": 0.5, "primaryType": "情绪类型" },
+    "X_semantic": { "keywords": [], "topics": ["主题1"] },
+    "Z_emotion": { "vector": { "valence": 0.0, "arousal": 0.0 }, "intensity": 0.5, "emotional_tag": "用自然语言描述的复合情感（如：表面笑着说没事、底下压着委屈和一点点愤怒）" },
     "W_who": [{ "name": "人名", "identity": "角色", "gender": "男/女", "relationship": "关系", "role": "参与者/观察者" }],
     "V_venue": { "type": "场景类型", "environment": "indoor/outdoor", "lighting": "照明", "atmosphere": "氛围" },
-    "R_relation": { "interactionType": "互动类型", "intimacyLevel": 0.5, "socialDynamics": "dynamics", "conversationFlow": "flow" },
+    "R_relation": { "interactionType": "互动类型", "intimacyLevel": 0.5 },
     "M_depth": { "importance": 0.5, "retentionPriority": 0.5, "emotionalWeight": 0.5 },
     "G_goods": [{ "name": "物件名", "category": "类别", "significance": "意义" }],
     "S_senses": { "visual": "", "auditory": "", "olfactory": "", "tactile": "", "taste": "" }
   },
-  "tags": ["标签1"]
+  "tags": ["标签1","标签2"]
 }
 
-注意：只提取9D词元，text字段由系统另行保存，不需要在这里生成。
-如果对话中没有足够信息提取记忆，返回 null。
-valence -1~1，arousal -1~1`,
+词元维度说明：
+- Z_emotion: 情感（所有情感相关词）
+- X_semantic: 语义/主题
+- W_who: 人物
+- V_venue: 场景/场地
+- R_relation: 关系
+- M_depth: 重要性
+- G_goods: 物件/物品
+- S_senses: 感官（五感）
+- Y_time: 时间
+- neuro_arousal: 体力/压力
+- psychosexual: 亲密
+- cognitive_executive: 认知/决策
+
+注意：
+- text 由系统保存，不需要生成。
+- tokens 必须覆盖原文的完整叙述，不是只提取几个关键词。
+- 情感不要用固定类别（如喜悦/悲伤），用 LLM 自然描述，因为真实情感往往是复合的。
+- valence -1~1，arousal -1~1`,
     };
 
     const response = await fetch(`${BASE_URL}/v1/chat/completions`, {
@@ -224,7 +269,7 @@ valence -1~1，arousal -1~1`,
       body: JSON.stringify({
         model: MODEL,
         messages: [extractPrompt, { role: 'user', content: conversationText }],
-        max_tokens: 1024,
+        max_tokens: 2048,
         temperature: 0.1,
       }),
     });
@@ -242,18 +287,40 @@ valence -1~1，arousal -1~1`,
     if (!jsonMatch) return makeBasicMemory(userText);
 
     const parsed = JSON.parse(jsonMatch[0]);
-    // Merge: user's original text + LLM's 9D data
-    return {
+    // If LLM says not a memory, skip storage
+    if (parsed.is_memory === false) return null;
+
+    const memoryEntry = {
       title: parsed.title || '聊天记录',
       text: userText, // ← user's original content, NOT AI-generated
       nineD: parsed.nineD || {
         X_semantic: { keywords: [], topics: [] },
-        Z_emotion: { vector: { valence: 0, arousal: 0 }, intensity: 0.3, primaryType: 'neutral' },
+        Z_emotion: { vector: { valence: 0, arousal: 0 }, intensity: 0.3, emotional_tag: 'neutral' },
         W_who: [], V_venue: {}, R_relation: {}, M_depth: { importance: 0.3, retentionPriority: 0.3, emotionalWeight: 0.3 }, G_goods: [], S_senses: {},
       },
       tags: parsed.tags || [],
       timestamp: Date.now(),
     };
+
+    // ⭐ V5.1.1: 15D 词元存储（用户输入拆分为词元+维度标记）
+    if (Array.isArray(parsed.tokens) && parsed.tokens.length > 0) {
+      memoryEntry._tokens = parsed.tokens.map(t => ({
+        text: t.text,
+        dim: t.dim,
+        weight: Math.min(1, Math.max(0, t.weight || 0.3)),
+      }));
+      // 从词元中提取文本到关键词
+      const tokenTexts = parsed.tokens.map(t => t.text).filter(Boolean);
+      const existingKws = memoryEntry.nineD?.X_semantic?.keywords || [];
+      memoryEntry.nineD.X_semantic.keywords = [...new Set([...existingKws, ...tokenTexts])];
+    }
+
+    // ⭐ V5.1.1: 叙事存储
+    if (parsed.narrative && parsed.narrative.length > 10) {
+      memoryEntry._narrative = parsed.narrative;
+    }
+
+    return memoryEntry;
   } catch (e) {
     console.warn('Memory extraction failed:', e.message);
     // Fallback: basic memory with user's original text

@@ -89,7 +89,7 @@ export function NineDRadar({ memory }: Props) {
   if (!memory) {
     return (
       <div className="card">
-        <div className="section-title">9D 感知剖面</div>
+        <div className="section-title">15D 感知剖面</div>
         <div style={{ color: 'var(--text-muted)', padding: 40, textAlign: 'center' }}>选择记忆查看剖面</div>
       </div>
     );
@@ -97,7 +97,7 @@ export function NineDRadar({ memory }: Props) {
 
   return (
     <div className="card">
-      <div className="section-title">9D 感知剖面</div>
+      <div className="section-title">15D 感知剖面</div>
       <div style={{ textAlign: 'center' }}>
         <svg ref={svgRef} width={300} height={300} style={{ maxWidth: '100%' }} />
       </div>

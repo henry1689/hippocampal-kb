@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ELYSIUM · 智脑极乐境</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Noto Sans SC',sans-serif; background:#0d1117; color:#c9d1d9; height:100vh; display:flex; flex-direction:column; overflow:hidden; }
+
+/* ── Header ── */
+header { padding:8px 16px; border-bottom:1px solid #21262d; display:flex; align-items:center; gap:10px; flex-shrink:0; height:42px; }
+header h1 { font-size:14px; font-weight:600; display:flex; align-items:center; gap:6px; }
+header h1 span { color:#58a6ff; }
+header .right { margin-left:auto; display:flex; align-items:center; gap:12px; }
+.status { font-size:10px; color:#8b949e; display:flex; align-items:center; gap:4px; }
+.status-dot { width:6px; height:6px; border-radius:50%; display:inline-block; }
+.status-dot.online { background:#3fb950; box-shadow:0 0 4px #3fb950; }
+.status-dot.offline { background:#da3633; }
+
+/* ── Main: Left(4/5 observe) + Right(1/5 chat) ── */
+.main { flex:1; display:flex; min-height:0; }
+
+/* ── Right: Chat (1/5) ── */
+.chat-col { width:20%; min-width:280px; border-left:1px solid #21262d; display:flex; flex-direction:column; flex-shrink:0; }
+.chat-msgs { flex:1; overflow-y:auto; padding:10px 12px; display:flex; flex-direction:column; gap:8px; }
+.chat-msgs:empty::after { content:'和 ELYSIUM 聊聊吧……'; display:block; text-align:center; color:#30363d; font-size:12px; margin-top:20px; }
+
+.msg { max-width:92%; animation:fadeIn 0.3s ease; }
+@keyframes fadeIn { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+.msg.user { align-self:flex-end; }
+.msg.assistant { align-self:flex-start; }
+.msg .bbl { padding:7px 10px; border-radius:10px; font-size:12px; line-height:1.6; white-space:pre-wrap; word-break:break-word; }
+.msg.user .bbl { background:#1f6feb; color:#fff; border-bottom-right-radius:3px; }
+.msg.assistant .bbl { background:#161b22; border:1px solid #30363d; border-bottom-left-radius:3px; }
+
+.typing { display:flex; align-items:center; gap:3px; padding:7px 10px; }
+.typing span { width:5px; height:5px; border-radius:50%; background:#484f58; animation:typing 1.4s infinite; }
+.typing span:nth-child(2) { animation-delay:0.2s; }
+.typing span:nth-child(3) { animation-delay:0.4s; }
+@keyframes typing { 0%,60%,100%{opacity:0.3} 30%{opacity:1} }
+
+.chat-input { padding:8px 12px 10px; border-top:1px solid #21262d; display:flex; gap:6px; align-items:flex-end; }
+.chat-input textarea {
+  flex:1; background:#161b22; border:1px solid #30363d; border-radius:6px; padding:7px 10px;
+  font-size:12px; color:#c9d1d9; resize:none; font-family:inherit; min-height:34px; max-height:80px;
+  outline:none; transition:border-color 0.2s;
+}
+.chat-input textarea:focus { border-color:#1f6feb; }
+.chat-input button {
+  background:#238636; color:#fff; border:none; border-radius:6px; padding:7px 12px;
+  font-size:12px; cursor:pointer; white-space:nowrap; transition:background 0.2s; height:34px;
+}
+.chat-input button:hover { background:#2ea043; }
+.chat-input button:disabled { background:#21262d; color:#484f58; cursor:not-allowed; }
+.chat-input .btn-file { background:#21262d; font-size:14px; padding:7px 8px; }
+.chat-input .btn-file:hover { background:#30363d; }
+
+/* ── Left: Observe (4/5) ── */
+.observe-col { flex:1; display:flex; flex-direction:column; padding:10px 14px; overflow:hidden; gap:8px; }
+
+.observe-grid { flex:1; display:grid; grid-template-columns:1fr 1fr 1fr; grid-template-rows:auto 1fr; gap:8px; min-height:0; }
+.observe-card { background:#161b22; border:1px solid #30363d; border-radius:8px; padding:10px; overflow:hidden; display:flex; flex-direction:column; }
+.observe-card .title { font-size:9px; font-weight:700; color:#8b949e; letter-spacing:0.5px; margin-bottom:6px; text-transform:uppercase; flex-shrink:0; }
+.observe-card .body { flex:1; overflow-y:auto; min-height:0; }
+.observe-card .body::-webkit-scrollbar { width:3px; }
+.observe-card .body::-webkit-scrollbar-thumb { background:#30363d; border-radius:2px; }
+
+/* ── Card widgets ── */
+.weight-bar { display:flex; height:20px; border-radius:4px; overflow:hidden; font-size:9px; color:#fff; text-align:center; line-height:20px; margin-bottom:4px; }
+.weight-partner { background:#f06292; }
+.weight-strategist { background:#4dd0e1; }
+.weight-secretary { background:#ffd54f; color:#0d1117; }
+
+.info-row { display:flex; justify-content:space-between; font-size:10px; padding:2px 0; color:#8b949e; border-bottom:1px solid #161b22; }
+.info-row span:last-child { color:#c9d1d9; }
+
+.bar-row { display:flex; align-items:center; gap:4px; margin-bottom:1px; font-size:9px; }
+.bar-row .lbl { width:44px; text-align:right; color:#8b949e; flex-shrink:0; }
+.bar-row .trk { flex:1; height:7px; border-radius:3px; background:#21262d; overflow:hidden; }
+.bar-row .fl { height:100%; border-radius:3px; transition:width 0.5s ease; }
+.bar-row .val { width:24px; text-align:right; color:#8b949e; flex-shrink:0; }
+
+.tag { display:inline-block; padding:2px 6px; border-radius:3px; font-size:9px; margin:1px; background:#21262d; color:#8b949e; }
+.tag-venue { background:#1f6feb22; color:#58a6ff; border:1px solid #1f6feb44; }
+.tag-cue { background:#3fb95022; color:#3fb950; border:1px solid #3fb95044; }
+.tag-emotion { background:#da363322; color:#da3633; border:1px solid #da363344; }
+.tag-object { background:#d2992222; color:#d29922; border:1px solid #d2992244; }
+
+.pipeline-row { font-size:9px; padding:1px 0; color:#8b949e; display:flex; gap:6px; }
+.pipeline-row .step { color:#58a6ff; }
+.pipeline-row .time { color:#484f58; }
+
+.memory-row { font-size:9px; padding:2px 0; color:#8b949e; border-bottom:1px solid #161b22; display:flex; justify-content:space-between; }
+.memory-row .mtitle { color:#c9d1d9; max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.memory-row .memotion { color:#da3633; }
+
+.token-row { font-size:9px; padding:1px 4px; margin:1px 0; background:#0d1117; border-radius:3px; display:flex; justify-content:space-between; }
+.token-row .tok { color:#58a6ff; }
+.token-row .cnt { color:#484f58; }
+
+.preset-btn { display:inline-block; padding:2px 8px; border-radius:10px; font-size:9px; cursor:pointer; background:#21262d; color:#8b949e; border:1px solid #30363d; margin:1px; }
+.preset-btn:hover { background:#30363d; color:#c9d1d9; }
+.preset-btn.active { background:#1f6feb; border-color:#1f6feb; color:#fff; }
+
+.test-input { width:100%; background:#0d1117; color:#c9d1d9; border:1px solid #30363d; border-radius:4px; padding:6px 8px; font-size:11px; resize:none; font-family:inherit; min-height:28px; outline:none; }
+.test-input:focus { border-color:#1f6feb; }
+.test-btn { margin-top:4px; background:#238636; color:#fff; border:none; border-radius:4px; padding:4px 10px; font-size:10px; cursor:pointer; margin-right:4px; }
+.test-btn:hover { background:#2ea043; }
+.test-btn.blue { background:#1f6feb; }
+.test-btn.blue:hover { background:#388bfd; }
+.test-btn.red { background:#da3633; }
+.test-btn.red:hover { background:#f85149; }
+.test-result { margin-top:4px; padding:6px; background:#0d1117; border-radius:4px; font-size:9px; white-space:pre-wrap; font-family:monospace; max-height:100px; overflow-y:auto; }
+
+::-webkit-scrollbar { width:4px; height:4px; }
+::-webkit-scrollbar-track { background:transparent; }
+::-webkit-scrollbar-thumb { background:#30363d; border-radius:2px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🧠 ELYSIUM <span>· V5.1.1</span></h1>
+  <span style="font-size:10px;color:#484f58">智脑极乐境 · 调试控制台</span>
+  <div class="right">
+    <span id="observeCount" style="font-size:10px;color:#484f58"></span>
+    <div class="status">
+      <span class="status-dot offline" id="statusDot"></span>
+      <span id="statusText">连接中...</span>
+    </div>
+  </div>
+</header>
+
+<div class="main">
+
+  <!-- ─── 左：观测区 (4/5) ─── -->
+  <div class="observe-col">
+    <div style="display:flex;gap:8px;flex-shrink:0;flex-wrap:wrap">
+      <span style="font-size:10px;color:#8b949e">测试预设:</span>
+      <button class="preset-btn" onclick="setTest('唉，又是那种感觉……')">抽象模糊</button>
+      <button class="preset-btn" onclick="setTest('还记得那天的事吗？就是那个')">代词回忆</button>
+      <button class="preset-btn" onclick="setTest('今天好开心啊！阳光特别好')">清晰积极</button>
+      <button class="preset-btn" onclick="setTest('没事，算了，你帮不了我')">求救信号</button>
+      <button class="preset-btn" onclick="setTest('我们昨天在咖啡厅见面了')">场地检测</button>
+      <button class="preset-btn" onclick="setTest('老李还是老样子')">军师触发</button>
+    </div>
+
+    <div class="observe-grid">
+      <!-- 行1列1: 人格权重 -->
+      <div class="observe-card">
+        <div class="title">🎯 人格权重</div>
+        <div class="body">
+          <div id="o-weights"></div>
+          <div id="o-mode" style="font-size:10px;color:#8b949e;margin-top:2px"></div>
+        </div>
+      </div>
+
+      <!-- 行1列2: 15D指标 -->
+      <div class="observe-card">
+        <div class="title">📊 15D 指标</div>
+        <div class="body" id="o-bars"></div>
+      </div>
+
+      <!-- 行1列3: 分析详情 -->
+      <div class="observe-card">
+        <div class="title">🔍 分析详情</div>
+        <div class="body" id="o-analysis"></div>
+      </div>
+
+      <!-- 行2列1: 线索标签 -->
+      <div class="observe-card">
+        <div class="title">🏷️ 线索标签</div>
+        <div class="body" id="o-cues"></div>
+      </div>
+
+      <!-- 行2列2: 关联记忆 + 词元关联 -->
+      <div class="observe-card">
+        <div class="title">🧩 关联记忆</div>
+        <div class="body" id="o-memories"></div>
+        <div class="title" style="margin-top:6px">🔗 词元关联索引</div>
+        <div class="body" id="o-tokens"></div>
+      </div>
+
+      <!-- 行2列3: 流水线 -->
+      <div class="observe-card">
+        <div class="title">📋 流水线日志</div>
+        <div class="body" id="o-pipeline"></div>
+      </div>
+    </div>
+
+    <!-- 测试输入 -->
+    <div style="flex-shrink:0">
+      <textarea class="test-input" id="testInput" rows="1" placeholder="输入测试文本……">唉，又是那种感觉……</textarea>
+      <div>
+        <button class="test-btn" onclick="testAnalyze()">🔍 模糊检测</button>
+        <button class="test-btn blue" onclick="testChat()">💬 完整对话</button>
+        <button class="test-btn red" onclick="testReset()">🔄 重置</button>
+      </div>
+      <div class="test-result" id="testResult"></div>
+    </div>
+  </div>
+
+  <!-- ─── 右：聊天区 (1/5) ─── -->
+  <div class="chat-col">
+    <div style="padding:8px 12px;font-size:10px;color:#484f58;border-bottom:1px solid #21262d;flex-shrink:0">💬 聊天</div>
+    <div class="chat-msgs" id="chat"></div>
+    <div class="chat-input">
+      <button class="btn-file" onclick="document.getElementById('fileInput').click()">📎</button>
+      <input type="file" id="fileInput" accept=".txt,.md" style="display:none" onchange="uploadFile(event)">
+      <textarea id="input" rows="1" placeholder="和 ELYSIUM 聊聊……" onkeydown="handleKey(event)"></textarea>
+      <button id="sendBtn" onclick="send()">发送</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const API = 'http://localhost:3001';
+let sending = false;
+let lastChatData = null;
+
+// ─── Chat ───
+function addMsg(role, text) {
+  const c = document.getElementById('chat');
+  const d = document.createElement('div'); d.className = 'msg '+role;
+  d.innerHTML = '<div class="bbl">'+escHtml(text)+'</div>';
+  c.appendChild(d); c.scrollTop = c.scrollHeight;
+}
+function escHtml(t) { return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>'); }
+
+function showTyping() {
+  const c = document.getElementById('chat');
+  const d = document.createElement('div'); d.className = 'msg assistant'; d.id = 't-indicator';
+  d.innerHTML = '<div class="bbl typing"><span></span><span></span><span></span></div>';
+  c.appendChild(d); c.scrollTop = c.scrollHeight;
+}
+function hideTyping() { const e = document.getElementById('t-indicator'); if(e) e.remove(); }
+
+async function send() {
+  const inp = document.getElementById('input');
+  const text = inp.value.trim();
+  if (!text||sending) return;
+  inp.value = ''; inp.style.height = 'auto';
+  sending = true; document.getElementById('sendBtn').disabled = true;
+  addMsg('user', text); showTyping();
+  try {
+    const r = await fetch(API+'/api/chat', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ messages:[{ role:'user', content: text }] }) });
+    if (!r.ok) throw new Error('HTTP '+r.status);
+    const data = await r.json();
+    hideTyping(); addMsg('assistant', data.reply);
+    lastChatData = data; updateObserve(data); document.getElementById('chat').scrollTop = document.getElementById('chat').scrollHeight;
+  } catch(e) { hideTyping(); addMsg('assistant', '出错: '+e.message); }
+  finally { sending = false; document.getElementById('sendBtn').disabled = false; document.getElementById('input').focus(); }
+}
+
+function handleKey(e) {
+  if (e.key==='Enter'&&!e.shiftKey) { e.preventDefault(); send(); }
+  const el = e.target; el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight,80)+'px';
+}
+
+async function uploadFile(e) {
+  const file = e.target.files?.[0]; if(!file) return;
+  const content = await file.text();
+  addMsg('user', '📎 '+file.name); showTyping();
+  try {
+    const r = await fetch(API+'/api/knowledge', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ title: file.name.replace(/\.(txt|md)$/,''), content: content.slice(0,3000), category:'文章', article:true }) });
+    if (r.ok) { const d = await r.json(); hideTyping(); addMsg('assistant', '📖 已读《'+d.analysis.title+'》');
+      if(d.analysis.emotion) addMsg('assistant', '情感: '+d.analysis.emotion.primaryType+' '+(d.analysis.emotion.intensity*100).toFixed(0)+'%'); }
+    else { hideTyping(); addMsg('assistant', '上传失败'); }
+  } catch(e) { hideTyping(); addMsg('assistant', '出错: '+e.message); }
+  e.target.value = '';
+}
+
+// ─── Test ───
+function setTest(t) { document.getElementById('testInput').value = t; }
+
+async function testAnalyze() {
+  const text = document.getElementById('testInput').value;
+  const d = document.getElementById('testResult');
+  d.textContent = '分析中...';
+  try {
+    const r = await fetch(API+'/api/debug/analyze', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({text}) });
+    const j = await r.json(); const a = j.analysis; const w = j.weights;
+    d.innerHTML = `<b>模糊度:</b> ${a.ambiguity_score}/100 | <b>求救:</b> ${a.hidden_cry_for_help?'⚠️':'否'}
+<b>场地:</b> ${a.normalized_venue||'无'} | <b>效价:</b> ${a.emotionalValence}
+<b>线索:</b> ${(a.extracted_cues||[]).join('、')||'无'}
+<b>代词/情绪/抽象:</b> ${a.pronounCount}/${a.emotionCount}/${a.abstractCount}
+<b>交互权重:</b> ${a.interaction_weight} | <b>亲密度:</b> ${a.intimacyHint}
+<hr style="border-color:#30363d">
+<b>人格:</b> 伴侣${(w.partner*100).toFixed(0)}% | 军师${(w.strategist*100).toFixed(0)}% | 秘书${(w.secretary*100).toFixed(0)}%`;
+    refreshState();
+  } catch(e) { d.textContent = '错误: '+e.message; }
+}
+
+async function testChat() {
+  const text = document.getElementById('testInput').value;
+  const d = document.getElementById('testResult');
+  d.textContent = '对话中...';
+  try {
+    const r = await fetch(API+'/api/chat', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({messages:[{role:'user',content:text}]}) });
+    const data = await r.json(); const a=data._debug?.analysis, w=data._debug?.weights;
+    d.innerHTML = `<b>动作:</b> ${data.action} | <b>节奏:</b> ${data.rhythm_config?.typing_speed||'normal'}
+<hr style="border-color:#30363d">${data.reply}`;
+    lastChatData = data; updateObserve(data); refreshState();
+  } catch(e) { d.textContent = '错误: '+e.message; }
+}
+
+async function testReset() {
+  document.getElementById('testResult').textContent = '已重置';
+  await fetch(API+'/api/debug/reset');
+  refreshAll();
+}
+
+// ─── Observe ───
+function updateObserve(data) {
+  if(!data||!data._debug) return;
+  const d=data._debug, s=d.state||{}, a=d.analysis||{}, w=d.weights||{};
+  document.getElementById('observeCount').textContent = `线索 ${a.extracted_cues?.length||0} | 记忆 ${(data.relatedMemories||[]).length}`;
+
+  const partner=(w.partner||0)*100, strategist=(w.strategist||0)*100, secretary=(w.secretary||0)*100;
+  document.getElementById('o-weights').innerHTML = `<div class="weight-bar"><div class="weight-partner" style="width:${partner}%">伴侣 ${partner.toFixed(0)}%</div><div class="weight-strategist" style="width:${strategist}%">军师 ${strategist.toFixed(0)}%</div><div class="weight-secretary" style="width:${secretary}%">秘书 ${secretary.toFixed(0)}%</div></div>`;
+  document.getElementById('o-mode').textContent = data.action==='CLARIFY'?'🔍 澄清追问':'💬 直接回应';
+
+  const bars = [
+    {l:'压力',p:'matrix_A_body.neuro_arousal.hrv_stress_index',c:'#ef5350'},
+    {l:'兴奋',p:'matrix_A_body.neuro_arousal.gsr_excitement',c:'#f06292'},
+    {l:'能量',p:'matrix_A_body.neuro_arousal.circadian_energy',c:'#4dd0e1'},
+    {l:'亲密度',p:'matrix_A_body.psycho_sexual.intimacy_craving',c:'#ff7043'},
+    {l:'道德疲劳',p:'matrix_B_psyche.shadow_self.moral_fatigue',c:'#ce93d8'},
+    {l:'张力',p:'matrix_C_social.social_topology.relational_tension',c:'#81c784'},
+    {l:'认知负荷',p:'matrix_C_social.cognitive_executive.working_memory_load',c:'#4dd0e1'},
+    {l:'模糊度',p:'matrix_D_anchor.semantic_intent.ambiguity_score',c:'#7986cb'},
+  ];
+  let bh='';
+  for(const b of bars) { const v=gbp(s,b.p); if(v==null) continue; const p=Math.min(100,Math.max(0,v));
+    bh+=`<div class="bar-row"><span class="lbl">${b.l}</span><div class="trk"><div class="fl" style="width:${p}%;background:${b.c}80"></div></div><span class="val">${Math.round(p)}</span></div>`; }
+  document.getElementById('o-bars').innerHTML = bh;
+
+  const cry=a.hidden_cry_for_help;
+  document.getElementById('o-analysis').innerHTML =
+    `<div class="info-row"><span>模糊度</span><span>${a.ambiguity_score||0}/100</span></div>
+     <div class="info-row"><span>效价</span><span>${(a.emotionalValence||0).toFixed(2)}</span></div>
+     <div class="info-row"><span>亲密度</span><span>${a.intimacyHint||0}</span></div>
+     <div class="info-row"><span>交互权重</span><span>${a.interaction_weight||0}</span></div>
+     <div class="info-row"><span>代词/情绪/抽象</span><span>${a.pronounCount||0} / ${a.emotionCount||0} / ${a.abstractCount||0}</span></div>
+     ${cry?'<div class="info-row" style="color:#da3633"><span>🆘 求救信号</span><span>⚠️</span></div>':''}`;
+
+  let ch='';
+  if(a.extracted_cues?.length) ch+=a.extracted_cues.map(c=>`<span class="tag tag-cue">${c}</span>`).join('')+' ';
+  if(a.normalized_venue) ch+=`<span class="tag tag-venue">📍${a.normalized_venue}</span> `;
+  if(a.key_objects?.length) ch+=a.key_objects.map(o=>`<span class="tag tag-object">📦${o}</span>`).join('')+' ';
+  if(a.posWords?.length) ch+=a.posWords.map(w=>`<span class="tag tag-emotion">😊${w}</span>`).join('')+' ';
+  if(a.negWords?.length) ch+=a.negWords.map(w=>`<span class="tag tag-emotion">😔${w}</span>`).join('');
+  document.getElementById('o-cues').innerHTML = ch||'<span style="color:#484f58;font-size:9px">无</span>';
+
+  const mems = data.relatedMemories||[];
+  document.getElementById('o-memories').innerHTML = mems.length>0
+    ? mems.slice(0,4).map(m=>`<div class="memory-row"><span class="mtitle">${m.title||'?'}</span><span class="memotion">${m.nineD?.Z_emotion?.primaryType||''} ${((m.nineD?.M_depth?.importance||0)*100).toFixed(0)}%</span></div>`).join('')
+    : '<span style="color:#484f58;font-size:9px">无相关记忆</span>';
+
+  const pipe = d.pipeline||[];
+  document.getElementById('o-pipeline').innerHTML = pipe.length>0
+    ? pipe.slice(0,10).map(p=>`<div class="pipeline-row"><span class="step">${p.step}</span><span class="time">${new Date(p.timestamp).toLocaleTimeString()}</span></div>`).join('')
+    : '<span style="color:#484f58;font-size:9px">无日志</span>';
+}
+
+async function refreshState() {
+  try {
+    const [sr,tr] = await Promise.all([
+      fetch(API+'/api/debug/state'),
+      fetch(API+'/api/debug/tokens')
+    ]);
+    const s = await sr.json();
+    const t = await tr.json();
+    const meta = s._meta||{};
+    document.getElementById('statusDot').className = 'status-dot online';
+    document.getElementById('statusText').textContent = '已连接 #'+meta.interaction_count;
+
+    // Token association
+    if(t&&t.totalTokens>0) {
+      let th = `<div class="info-row"><span>总词元</span><span>${t.totalTokens||0}</span></div>
+                <div class="info-row"><span>关联记忆</span><span>${t.totalMemories||0}</span></div>`;
+      if(t.topTokens?.length) {
+        th += '<div style="margin-top:4px">高频词元:</div>';
+        th += t.topTokens.slice(0,8).map(tok =>
+          `<div class="token-row"><span class="tok">${tok.token}</span><span class="cnt">${tok.count}次</span></div>`
+        ).join('');
+      }
+      document.getElementById('o-tokens').innerHTML = th;
+    } else {
+      fetch(API+'/api/debug/tokens/search?q='+encodeURIComponent('咖啡厅')).then(r=>r.json()).then(td=>{
+        if(td?.length) document.getElementById('o-tokens').innerHTML = td.slice(0,5).map(m=>`<div class="memory-row"><span class="mtitle">${m.title}</span></div>`).join('');
+      }).catch(()=>{});
+    }
+  } catch(e) {
+    document.getElementById('statusDot').className = 'status-dot offline';
+    document.getElementById('statusText').textContent = '断开';
+  }
+}
+
+async function refreshAll() { await refreshState(); if(lastChatData) updateObserve(lastChatData); }
+
+function gbp(o,p) { return p.split('.').reduce((c,k)=>c?.[k],o); }
+
+refreshAll();
+setInterval(refreshAll, 3000);
+document.getElementById('input').focus();
+</script>
+</body>
+</html>

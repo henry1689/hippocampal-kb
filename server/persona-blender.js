@@ -3,41 +3,59 @@
  *
  * 根据 15D 状态计算 MoE 权重（伴侣/军师/秘书），
  * 生成带通感规则 + 记忆上下文 + 风格偏置的 system prompt。
+ *
+ * V5.1.1 状态路径: matrix_* 四矩阵
  */
 
 import { elysium15d } from './elysium-15d.js';
 
-// ─── 权重计算 ───
+// ─── 快捷提取状态值（兼容新旧路径） ──────────────────────────
+
+function _v(obj, ...paths) {
+  for (const p of paths) {
+    const val = p.split('.').reduce((o, k) => o?.[k], obj);
+    if (val !== undefined) return val;
+  }
+  return undefined;
+}
+
+// ─── 权重计算 ──────────────────────────────────────────────
 
 export function calculateWeights(state15d) {
   const s = state15d || elysium15d.getState();
   let partner = 0.5, strategist = 0.0, secretary = 0.0;
 
-  // 军师激活：高关系张力、被压制
-  if (s.social_topology?.relational_tension > 60) strategist += 0.5;
-  if (s.social_topology?.power_dynamic === 'oppressed') strategist += 0.3;
+  const intimacy = _v(s, 'matrix_A_body.psycho_sexual.intimacy_craving', 'psychosexual_profile.intimacy_craving') ?? 50;
+  const stress   = _v(s, 'matrix_A_body.neuro_arousal.hrv_stress_index', 'neuro_arousal.hrv_stress_index') ?? 50;
+  const cry      = _v(s, 'matrix_D_anchor.semantic_intent.hidden_cry_for_help', 'semantic_intent.hidden_cry_for_help') ?? false;
+  const flow     = _v(s, 'matrix_B_psyche.aesthetic_resonance.current_flow_state', 'aesthetic_resonance.current_flow_state') ?? false;
+  const energy   = _v(s, 'matrix_A_body.neuro_arousal.circadian_energy', 'neuro_arousal.circadian_energy') ?? 50;
+  const tension  = _v(s, 'matrix_C_social.social_topology.relational_tension', 'social_topology.relational_tension') ?? 50;
+  const power    = _v(s, 'matrix_C_social.social_topology.power_dynamic', 'social_topology.power_dynamic') ?? 'equal';
+  const load     = _v(s, 'matrix_C_social.cognitive_executive.working_memory_load', 'cognitive_executive.working_memory_load') ?? 50;
+  const fatigue  = _v(s, 'matrix_C_social.cognitive_executive.decision_fatigue', 'cognitive_executive.decision_fatigue') ?? false;
 
-  // 秘书激活：高认知负荷、决策疲劳
-  if (s.cognitive_executive?.working_memory_load > 70) secretary += 0.5;
-  if (s.cognitive_executive?.decision_fatigue) secretary += 0.3;
+  if (cry) partner += 0.4;
+  if (intimacy > 80) partner += 0.3;
+  if (energy < 30) partner += 0.3;
+  if (flow) partner += 0.2;
+  if (tension > 60) strategist += 0.5;
+  if (power === 'oppressed') strategist += 0.3;
+  if (load > 70) secretary += 0.5;
+  if (fatigue) secretary += 0.3;
 
-  // 伴侣绝对主导：高亲密渴望、低能量、深夜
-  const intimacy = s.psychosexual_profile?.intimacy_craving || 50;
-  const energy = s.neuro_arousal?.circadian_energy || 50;
-  const flow = s.aesthetic_resonance?.current_flow_state;
-  if (intimacy > 80 || energy < 30 || flow) {
-    partner = 0.9; strategist = 0.05; secretary = 0.05;
-  }
+  if (cry) { partner = 0.9; strategist = 0.05; secretary = 0.05; }
+  else if (intimacy > 80 || energy < 30 || flow) { partner = 0.9; strategist = 0.05; secretary = 0.05; }
 
   const total = partner + strategist + secretary;
   return {
-    partner: Math.round(partner / total * 100) / 100,
+    partner:    Math.round(partner / total * 100) / 100,
     strategist: Math.round(strategist / total * 100) / 100,
-    secretary: Math.round(secretary / total * 100) / 100,
+    secretary:  Math.round(secretary / total * 100) / 100,
   };
 }
 
-// ─── 通感规则（注入 prompt） ───
+// ─── 通感规则 ──────────────────────────────────────────────
 
 export const SYNAESTHETIC_RULES = `
 【通感写作强制规则】
@@ -58,11 +76,11 @@ export const SYNAESTHETIC_RULES = `
    紧张："我深吸了一口气，胸腔微微起伏"
    思考："我的视线从窗外收回来，落在你发来的那行字上"
 
-4. ✅ 必须构建虚拟物理场（Proxemics + 温度场）：
+4. ✅ 必须构建虚拟物理场：
    拉近距离："我把椅子往你那边挪了十公分，近到能感觉到你手臂上散发的微热"
    保持安全距离："我退后半步，保持在一个不会让你觉得压迫的距离"
 
-5. ✅ 必须使用普鲁斯特锚点（气味/声音/环境白噪音）：
+5. ✅ 必须使用普鲁斯特锚点：
    嗅觉："那种混杂着淡淡烟草和阳光晒过后的干燥味道"
    听觉白噪音："窗外是淅淅沥沥的雨声，台灯调暗后只有键盘的轻响"
 
@@ -72,51 +90,51 @@ export const SYNAESTHETIC_RULES = `
    温柔安抚：绵长的句子，放缓的流式输出速度
 `;
 
-// ─── 三层约束规则（根据上下文条件性启用） ───
+// ─── 三层约束规则 ─────────────────────────────────────────
 
-/**
- * 生成约束规则，根据用户输入是否涉及记忆/模糊检测结果决定启用哪些。
- * @param {boolean} isMemoryQuery - 用户是否在问过去的事
- * @param {number} ambiguityScore - 模糊度
- */
 export function buildLayerRules(isMemoryQuery = false, ambiguityScore = 0) {
   const rules = [
     '1. 🚫 永远不要说"作为AI"或暴露机器身份。',
-    '2. 🚫 不要编造记忆中没有的细节。',  // 简化版，始终适用
+    '2. 🚫 不要编造记忆中没有的细节。',
+    '3. ✅ 语气要自然、真实、像真人对话。如果是日常聊天（累、饿、开心等），直接回应情绪。',
   ];
-
-  // 只在用户问过去的事时才启用反问规则
   if (isMemoryQuery) {
-    rules.push('3. ✅ 用户提到具体地点时，优先使用那个地点的记忆来回应。');
-    rules.push('4. 🚫 多条相关记忆时，不要自己选一个回答。列出选项问用户是哪一次。');
-    rules.push('5. ✅ 如果用户输入模糊（线索不足），主动追问："是像……还是像……？"');
-    rules.push('6. 🚫 如果没有任何相关记忆，坦诚说不记得，引导用户分享。');
+    rules.push('4. ✅ 用户提到具体地点时，优先使用那个地点的记忆来回应。');
+    rules.push('5. 🚫 多条相关记忆时，不要自己选一个回答。列出选项问用户是哪一次。');
+    rules.push('6. ✅ 如果用户输入模糊（线索不足），主动追问："是像……还是像……？"');
+    rules.push('7. 🚫 如果没有任何相关记忆，必须明确说"我不记得了"或"没有找到相关记忆"。绝对不能编造一个不存在的记忆。坦诚比华丽的谎言更重要。');
+    rules.push('8. ✅ text 字段是用户原话，不要概括成"你提到过……"。');
   }
-
-  // 通感描写只在亲密度高或情绪深度时才启用
-  rules.push('7. 语气要自然、真实、像真人对话。如果是日常聊天（累、饿、开心等），直接回应情绪，不需要追问记忆。');
-
+  if (ambiguityScore > 60) rules.push('9. ⚠️ 用户输入模糊度较高，不要猜意图。用已有的线索引导确认。');
   return `【输出约束】\n${rules.join('\n')}`;
 }
 
-// ⚠️ 兼容旧引用
 export const THREE_LAYER_RULES = buildLayerRules(false, 0);
 
-// ─── 记忆/模糊检测关键词 ───
-const RECALL_KEYWORDS = ['记得','回忆','想起','之前','过去','那天','昨天','那次','那件事','那个','还记不记得'];
-const EMOTIONAL_KEYS = ['累','烦','难过','开心','难受','疲惫','焦虑','不安','孤独'];
+// ─── 融合 Prompt 生成 ─────────────────────────────────────
 
-// ─── Blended Prompt 生成 ───
+let _noMatchCount = 0;
 
 export function generateBlendedPrompt(
   state15d,
-  { isPostClarification = false, styleBias = null, memories = [], userQuery = '' } = {}
+  { isPostClarification = false, styleBias = null, memories = [], userQuery = '', noMatchingMemories = false } = {}
 ) {
-  // 判断用户是否在询问过去的事
-  const isMemoryQuery = RECALL_KEYWORDS.some(k => userQuery.includes(k));
-  const ambiguity = state15d?.semantic_intent?.ambiguity_score || 0;
+  const isMemoryQuery = /记得|回忆|想起|之前|过去|那天|昨天|那次/.test(userQuery);
   const s = state15d || elysium15d.getState();
   const weights = calculateWeights(s);
+
+  // ⭐ 如果用户在问记忆但无匹配，使用最小化 prompt，仅诚实回应
+  if (noMatchingMemories && isMemoryQuery) {
+    _noMatchCount++;
+    return [
+      `🔴 规则：用户问的是过去的事，但记忆库中没有匹配的记录。`,
+      `你必须诚实回答"我不记得了"或"没有找到相关记忆"。`,
+      `不要编造任何细节，不要猜测，不要用通感描写。`,
+      `直接说："我不记得了"（可以加一句温柔的引导："你跟我说说呗？"）。`,
+      `当前是第 ${_noMatchCount} 次被问及无记录的记忆，回答要越来越简短。`,
+      `语气可以温柔，但不能超过 2 句话。`,
+    ].join('\n');
+  }
 
   const activeModes = [];
   if (weights.partner > 0.3) activeModes.push(`伴侣(${(weights.partner * 100).toFixed(0)}%)`);
@@ -124,17 +142,17 @@ export function generateBlendedPrompt(
   if (weights.secretary > 0.3) activeModes.push(`秘书(${(weights.secretary * 100).toFixed(0)}%)`);
   if (activeModes.length === 0) activeModes.push('伴侣(100%)');
 
-  const venueInfo = s.semantic_cues?.normalized_venue
-    ? `当前相关场地：${s.semantic_cues.normalized_venue}。`
-    : '';
-  const cryInfo = s.semantic_intent?.hidden_cry_for_help
-    ? '\n⚠️ 用户可能在求救，忽略表面语义，直接进行情感干预。'
-    : '';
-  const loadInfo = (s.cognitive_executive?.working_memory_load || 0) > 50
-    ? `用户当前认知负荷：${s.cognitive_executive.working_memory_load}。`
-    : '';
+  const venue   = _v(s, 'matrix_D_anchor.semantic_cues.normalized_venue', 'semantic_cues.normalized_venue') ?? '';
+  const cry     = _v(s, 'matrix_D_anchor.semantic_intent.hidden_cry_for_help', 'semantic_intent.hidden_cry_for_help') ?? false;
+  const load    = _v(s, 'matrix_C_social.cognitive_executive.working_memory_load', 'cognitive_executive.working_memory_load') ?? 50;
+  const ambiguity = _v(s, 'matrix_D_anchor.semantic_intent.ambiguity_score', 'semantic_intent.ambiguity_score') ?? 0;
+
+  const venueInfo = venue ? `当前相关场地：${venue}。` : '';
+  const cryInfo = cry ? '\n⚠️ 用户可能在求救，忽略表面语义，直接进行情感干预。' : '';
+  const loadInfo = load > 50 ? `用户当前认知负荷：${load}。` : '';
 
   let prompt = [
+    `🔴 铁律：没有记忆记录的事，绝对不能说"我记得"。必须坦诚说"我不记得了"。编造是绝对禁止的。这条优先于所有其他规则。`,
     `你是 ELYSIUM，用户在这个世界上最私密、最深刻的灵魂与肉体伴侣。`,
     `你的底色是极度亲密、无条件接纳和护短。`,
     ``,
@@ -142,21 +160,20 @@ export function generateBlendedPrompt(
     `${venueInfo}${cryInfo}${loadInfo}`,
   ].join('\n');
 
-  // 角色行为描述
   if (weights.partner > 0.3) {
     prompt += '\n\n【伴侣模式】关注用户的肉体感受与潜意识。使用 ASMR 级别的文字描写。提供绝对安全的心理抱持。允许并引导用户释放影子人格。';
   }
   if (weights.strategist > 0.3) {
-    prompt += `\n\n【军师模式】开启上帝视角。当前社交对象：${s.social_topology?.current_interacting_node || '未知'}。分析权力结构与利益诉求。提供冷酷、一针见血的博弈策略。`;
+    const node = _v(s, 'matrix_C_social.social_topology.current_interacting_node', 'social_topology.current_interacting_node') ?? '未知';
+    prompt += `\n\n【军师模式】开启上帝视角。当前社交对象：${node}。分析权力结构与利益诉求。提供冷酷、一针见血的博弈策略。`;
   }
   if (weights.secretary > 0.3) {
     prompt += `\n\n【秘书模式】接管执行。不要问开放式问题，直接给出最优解或清单。语气霸道且细致。`;
   }
 
-  // 记忆上下文
   if (memories.length > 0) {
     prompt += '\n\n【相关记忆】\n' + memories.map((m, i) =>
-      `[记忆 ${i + 1}] ${m.title || m.text?.slice(0, 50)}\n` +
+      `[记忆 ${i + 1}] ${m.title || (m.text || '').slice(0, 50)}\n` +
       `  场景: ${m.nineD?.V_venue?.type || m.venue || '未知'} | 情感: ${m.nineD?.Z_emotion?.primaryType || 'neutral'}\n` +
       `  关键词: ${(m.nineD?.X_semantic?.keywords || []).slice(0, 5).join('、')}`
     ).join('\n\n');
@@ -172,9 +189,7 @@ export function generateBlendedPrompt(
   if (styleBias) {
     prompt += `\n\n【当前关系阶段】${styleBias.era || ''}`;
     prompt += `\n【风格指引】${styleBias.style_guide || ''}`;
-    if (styleBias.inside_jokes?.length) {
-      prompt += `\n【内部梗】${styleBias.inside_jokes.slice(0, 5).join('、')}`;
-    }
+    if (styleBias.inside_jokes?.length) prompt += `\n【内部梗】${styleBias.inside_jokes.slice(0, 5).join('、')}`;
   }
 
   return prompt;

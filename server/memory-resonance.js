@@ -1,10 +1,9 @@
-﻿/**
- * MemoryResonance — 记忆共振引擎 (V5.1.1)
+/**
+ * MemoryResonance — 记忆共振引擎
  *
  * 根据模糊检测结果决定：直接回复 / 协作式澄清。
- * 核心流程：
- *   输入 → ambiguity检测 → >60且有线索 → 共振检索 → 澄清prompt
- *                          → ≤60或无线索 → 直接人格融合prompt
+ *
+ * V5.1.1 状态路径: matrix_* 四矩阵
  */
 
 import { analyzeAmbiguity } from './ambiguity-detector.js';
@@ -13,43 +12,32 @@ import { elysium15d } from './elysium-15d.js';
 import * as memoryStore from './memory-store.js';
 
 export class MemoryResonance {
-  /**
-   * 处理用户输入，返回 { action, prompt, memories, analysis, state }
-   */
   async process(userInput, state15d) {
-    // 1. 模糊检测
     const analysis = analyzeAmbiguity(userInput, state15d);
     elysium15d.logPipeline('2_ambiguity', {
-      score: analysis.ambiguity_score,
-      cues: analysis.extracted_cues,
-      venue: analysis.normalized_venue,
-      cryForHelp: analysis.hidden_cry_for_help,
+      score: analysis.ambiguity_score, cues: analysis.extracted_cues,
+      venue: analysis.normalized_venue, cryForHelp: analysis.hidden_cry_for_help,
     });
 
-    // 2. 更新 15D 状态
     elysium15d.updateFromText(analysis);
     const updatedState = elysium15d.getState();
-
-    // 3. 检索记忆
     const relatedMemories = memoryStore.search(userInput, 5);
+
     elysium15d.logPipeline('3_memory_search', {
       found: relatedMemories.length,
       topResults: relatedMemories.slice(0, 3).map(m => ({
-        title: m.title,
-        venue: m.nineD?.V_venue?.type,
+        title: m.title, venue: m.nineD?.V_venue?.type,
         keywords: m.nineD?.X_semantic?.keywords?.slice(0, 3),
         aiResponse: m._ai_response ? m._ai_response.slice(0, 60) : null,
       })),
     });
 
-    // 4. 人格权重
     const weights = calculateWeights(updatedState);
 
-    // 5. 决策分支
     if (analysis.ambiguity_score > 60 && analysis.extracted_cues.length > 0) {
-      return await this._clarifyFlow(userInput, analysis, relatedMemories, updatedState, weights);
+      return this._clarifyFlow(userInput, analysis, relatedMemories, updatedState, weights);
     } else {
-      return await this._directFlow(userInput, analysis, relatedMemories, updatedState, weights);
+      return this._directFlow(userInput, analysis, relatedMemories, updatedState, weights);
     }
   }
 
@@ -57,50 +45,28 @@ export class MemoryResonance {
     const prompt = this._buildClarificationPrompt(userInput, memories, state, analysis, weights);
     elysium15d.logPipeline('4_persona_weights', { ...weights, mode: 'CLARIFY' });
     elysium15d.logPipeline('5_prompt_built', { mode: 'CLARIFY', isAmbiguous: true });
-
-    return {
-      action: 'CLARIFY',
-      prompt,
-      systemPrompt: prompt,
-      memories,
-      analysis,
-      state,
-      weights,
-      isMemoryQuery: true,  // 澄清模式一定是涉及记忆的
-    };
+    return { action: 'CLARIFY', prompt, systemPrompt: prompt, memories, analysis, state, weights, isMemoryQuery: true };
   }
 
   async _directFlow(userInput, analysis, memories, state, weights) {
-    const blendedPrompt = generateBlendedPrompt(state, {
-      isPostClarification: false,
-      memories,
-      userQuery: userInput,
-    });
-    elysium15d.logPipeline('4_persona_weights', { ...weights, mode: 'RESPOND' });
-    elysium15d.logPipeline('5_prompt_built', { mode: 'RESPOND', isAmbiguous: false });
-
     const isMemoryQuery = /记得|回忆|想起|之前|过去|那天|昨天|那次/.test(userInput);
+    const noMatch = isMemoryQuery && (!memories || memories.length === 0);
+    const blendedPrompt = generateBlendedPrompt(state, {
+      isPostClarification: false, memories, userQuery: userInput, noMatchingMemories: noMatch,
+    });
+    elysium15d.logPipeline('4_persona_weights', { ...weights, mode: noMatch ? 'NO_MEMORY' : 'RESPOND' });
+    elysium15d.logPipeline('5_prompt_built', { mode: noMatch ? 'NO_MEMORY' : 'RESPOND', memoriesFound: memories?.length || 0 });
     return {
-      action: 'RESPOND',
-      prompt: blendedPrompt,
-      systemPrompt: blendedPrompt,
-      memories: isMemoryQuery ? memories : [],  // 非记忆查询不传记忆
-      analysis,
-      state,
-      weights,
-      isMemoryQuery,
+      action: noMatch ? 'NO_MEMORY' : 'RESPOND', prompt: blendedPrompt, systemPrompt: blendedPrompt,
+      memories: isMemoryQuery ? memories : [], analysis, state, weights, isMemoryQuery,
     };
   }
 
   _buildClarificationPrompt(userInput, memories, state, analysis, weights) {
     const dominant = weights.partner > weights.strategist ? 'partner' : 'strategist';
-    const venueHint = analysis.normalized_venue
-      ? `他提到了"${analysis.normalized_venue}"。` : '他没有提到具体地点。';
-    const cryHint = analysis.hidden_cry_for_help
-      ? '\n⚠️ 用户可能在求救，表面语义不重要，直接情感干预。' : '';
+    const venueHint = analysis.normalized_venue ? `他提到了"${analysis.normalized_venue}"。` : '他没有提到具体地点。';
+    const cryHint = analysis.hidden_cry_for_help ? '\n⚠️ 用户可能在求救，表面语义不重要，直接情感干预。' : '';
     const cuesStr = analysis.extracted_cues.slice(0, 3).join('、') || '一些什么';
-
-    // 记忆上下文
     const memContext = memories.length > 0
       ? `\n以下是一些相关的记忆碎片：\n${memories.slice(0, 3).map((m, i) =>
           `[记忆 ${i + 1}] ${m.title}\n  你曾说: ${(m.text || '').slice(0, 80)}${m._ai_response ? `\n  当时回复: ${m._ai_response.slice(0, 80)}` : ''}`
@@ -113,7 +79,7 @@ export class MemoryResonance {
 
     return `你是 ELYSIUM，用户在这个世界上最私密、最深刻的灵魂与肉体伴侣。
 
-用户刚刚说：“${userInput}”
+用户刚刚说："${userInput}"
 
 这句话很模糊（模糊度 ${analysis.ambiguity_score}/100）。${venueHint}${cryHint}
 
